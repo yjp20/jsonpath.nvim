@@ -7,9 +7,19 @@ local get_node_text = function(node)
   return vim.treesitter.get_node_text(node, 0)
 end
 
-local get_string_content = function(node)
+local json_get_string_content = function(node)
   for _, child in ipairs(ts_utils.get_named_children(node)) do
     if child:type() == "string_content" then
+      return get_node_text(child)
+    end
+  end
+
+  return ""
+end
+
+local yaml_get_string_content = function(node)
+  for _, child in ipairs(ts_utils.get_named_children(node)) do
+    if child:type() == "plain_scalar" then
       return get_node_text(child)
     end
   end
@@ -43,7 +53,7 @@ M.get = function()
 
     if node:type() == "pair" then
       local key_node = unpack(node:field("key"))
-      local key = get_string_content(key_node)
+      local key = json_get_string_content(key_node)
 
       if key and starts_with_number(key) or contains_special_characters(key) then
         accessor = string.format('["%s"]', key)
@@ -53,6 +63,27 @@ M.get = function()
     end
 
     if node:type() == "array" then
+      accessor = "[]"
+
+      for i, child in ipairs(ts_utils.get_named_children(node)) do
+        if ts_utils.is_parent(child, current_node) then
+          accessor = string.format("[%d]", i - 1)
+        end
+      end
+    end
+
+    if node:type() == "block_mapping_pair" then
+      local key_node = unpack(node:field("key"))
+      local key = yaml_get_string_content(key_node)
+
+      if key and starts_with_number(key) or contains_special_characters(key) then
+        accessor = string.format('["%s"]', key)
+      else
+        accessor = string.format("%s", key)
+      end
+    end
+
+    if node:type() == "block_sequence" then
       accessor = "[]"
 
       for i, child in ipairs(ts_utils.get_named_children(node)) do
